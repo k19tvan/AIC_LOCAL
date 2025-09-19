@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCubee Video Search System</title>
+
+    <link rel="stylesheet" href="./style.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" as="style">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" as="style">
+
+    <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Bangers&family=Oswald:wght@400;500&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Noto+Serif+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Creepster&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="top-toolbar">
+        <div class="toolbar-left">
+            <div class="app-title">
+                <img src="./logo.png" alt="OpenCubee Logo" class="app-logo">
+                <span>OpenCubee</span>
+            </div>
+            <div id="userInfo" style="color: var(--text-secondary);"></div>
+        </div>
+        <div class="toolbar-right">
+            <div class="theme-btn-wrapper">
+                <button id="themeSwitcherBtn" class="toolbar-btn" title="Change Theme">
+                    <div class="btn-hover-bg"></div>
+                    <span><i class="fas fa-palette"></i> Theme</span>
+                </button>
+                <div id="themeDropdown" class="theme-dropdown"></div>
+            </div>
+            <button class="toolbar-btn" id="dresBtn" title="DRES Submission"><div class="btn-hover-bg"></div><span><i class="fas fa-trophy"></i> DRES</span></button>
+            <button class="toolbar-btn" id="trakeBtn" title="Toggle Trake Panel"><div class="btn-hover-bg"></div><span><i class="fas fa-stream"></i> Trake</span></button>
+            <div class="model-btn-wrapper">
+                <button id="modelSelectBtn" class="toolbar-btn" title="Toggle Models (Ctrl+M)"><div class="btn-hover-bg"></div><span><i class="fas fa-layer-group"></i> Models</span></button>
+                <div id="modelDropdown" class="model-dropdown">
+                    <div class="model-dropdown-item"><input type="checkbox" id="model-beit3" value="beit3" checked><label for="model-beit3">BEiT-3</label></div>
+                    <div class="model-dropdown-item"><input type="checkbox" id="model-bge" value="bge" checked><label for="model-bge">BGE-VL</label></div>
+                    <div class="model-dropdown-item"><input type="checkbox" id="model-ops_mm" value="ops_mm" checked><label for="model-ops_mm">Ops-MM</label></div>
+                    <div class="model-dropdown-item"><input type="checkbox" id="model-metaclip2" value="metaclip2" checked><label for="model-metaclip2">MetaCLIP2</label></div>
+                </div>
+            </div>
+            <button class="toolbar-btn" id="onlyMetaBtn" title="Toggle MetaCLIP2 Only Mode (Ctrl+Alt+K)"><div class="btn-hover-bg"></div><span><i class="fas fa-star"></i> OnlyMeta</span></button>
+            <button class="toolbar-btn" id="objectFilterBtn" title="Object Filters (Ctrl+F)"><div class="btn-hover-bg"></div><span><i class="fas fa-shapes"></i> Filters</span></button>
+            <button class="toolbar-btn" id="clusterBtn" title="Toggle Clustering (Ctrl+G)"><div class="btn-hover-bg"></div><span><i class="fas fa-object-group"></i> Cluster</span></button>
+            <button class="toolbar-btn" id="historyBtn" title="Search History (Ctrl+Shift+H)"><div class="btn-hover-bg"></div><span><i class="fas fa-history"></i> History</span></button>            <button class="toolbar-btn" id="ambiguousBtn" title="Toggle Ambiguous Temporal Search (Ctrl+Shift+G)"><div class="btn-hover-bg"></div><span><i class="fas fa-random"></i> Ambiguous</span></button>
+            <button class="toolbar-btn" id="resetBtn" title="Reset Search (Ctrl+Shift+R)"><div class="btn-hover-bg"></div><span><i class="fas fa-redo"></i> Reset Search</span></button>
+        </div>
+    </div>
+
+    <div class="main-content-wrapper">
+        <div id="left-search-panel">
+            <div id="google-image-search-container">
+                <div class="google-search-header"></div>
+                <div class="google-search-input-wrapper">
+                    <input type="text" id="googleSearchInput" class="stage-input" placeholder="Tìm ảnh trên Google...">
+                    <button id="googleSearchBtn" class="control-btn" title="Search"><i class="fas fa-search"></i></button>
+                </div>
+                <div id="google-image-results-wrapper" style="display: none;">
+                    <div id="google-image-results"></div>
+                </div>
+            </div>
+            <div class="stages-container" id="stagesContainer"></div>
+            <div class="panel-controls">
+                <div class="stage-controls">
+                    <button class="control-btn" id="addStageBtn" title="Add Stage to End (Ctrl+])"><i class="fas fa-plus"></i></button>
+                    <button class="control-btn" id="removeStageBtn" title="Remove Last Stage (Ctrl+Shift+])"><i class="fas fa-minus"></i></button>
+                </div>
+                <button class="search-btn" id="searchBtn" title="Search (Enter)"><i class="fas fa-search"></i> Search</button>
+            </div>
+        </div>
+        <div id="right-results-panel">
+            <div id="correctSubmissionPanel" style="display: none;">
+                <h4><i class="fas fa-check-circle"></i> Correct Submission</h4>
+                <div id="correctSubmissionImageContainer"></div>
+                <p class="reset-note">This will be cleared on 'Reset Search'.</p>
+            </div>
+            <div id="teamworkPanelContainer" style="display: none;">
+                <h3><i class="fas fa-users"></i> Teamwork Submission Panel</h3>
+                <div id="teamworkGrid"></div>
+            </div>
+             <div id="trakePanelContainer" style="display: none;">
+                <h3><i class="fas fa-stream"></i> Trake Panel</h3>
+                <div id="trakeGrid"></div>
+            </div>
+            <div id="timingInfoDisplay" class="timing-info-container"></div>
+            <div id="loadingIndicator" style="display: none; text-align: center;"><i class="fas fa-spinner fa-spin"></i> Performing Search...</div>
+            <div id="resultsContainer">
+                <p style="text-align: center; color: var(--text-secondary); padding-top: 100px; font-size: 1.2rem;">Sử dụng bảng điều khiển bên trái để bắt đầu tìm kiếm.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="usernameModal" class="modal-overlay" style="display: flex; z-index: 3000;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 class="modal-title" style="width: 100%; text-align: center; color: var(--text-primary); font-weight: 600;">Welcome to OpenCubee!</h2>
+            </div>
+            <div class="modal-body" style="flex-direction: column; gap: 20px;">
+                <p style="color: var(--text-secondary);">Please enter your name to join the session.</p>
+                <input type="text" id="usernameInput" class="filter-input" placeholder="Your Name...">
+                <button id="usernameSubmitBtn" class="search-btn" style="width: 100%;">Join</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="objectFilterModal" class="modal-overlay"><div class="modal-content"><div class="modal-header"><h2 class="modal-title"><i class="fas fa-shapes"></i> Object Filters</h2><span class="modal-close" id="modalCloseBtn">&times;</span></div><div class="modal-body"><div class="filter-section"><div class="filter-section-header"><h3 class="filter-section-title">Object Counting</h3><label class="switch"><input type="checkbox" id="enableCountFilter"><span class="slider"></span></label></div><div id="countFilterControls" class="filter-controls-container"></div><button class="add-custom-btn" id="addCustomCountBtn" style="margin-top: 15px; width: 100%;"><i class="fas fa-plus"></i> Add Custom Object</button></div><div class="filter-section"><div class="filter-section-header"><h3 class="filter-section-title">Object Positioning</h3><label class="switch"><input type="checkbox" id="enablePositionFilter"><span class="slider"></span></label></div><div class="position-controls"><canvas id="positioningCanvas" width="640" height="360"></canvas><div id="drawnBoxesList" class="drawn-boxes-list"></div><p class="shortcuts-info"><b>Shortcuts:</b> Draw box with mouse. <br><b>1-6:</b> person, car, truck, dog, cat, toaster. <b>7:</b> Custom. <br><b>Backspace:</b> Delete last box. <b>C:</b> Clear all.</p></div></div></div></div></div>
+    
+    <div id="imageModal" class="image-modal-overlay"><span class="image-modal-close" title="Close (Esc)">&times;</span><img class="image-modal-content" id="zoomedImage"></div>
+    
+    <div id="temporalContextModal" class="image-modal-overlay"><div class="temporal-modal-content"><div class="temporal-modal-header"><h2 id="temporalModalTitle"></h2><span class="image-modal-close" id="closeTemporalModalBtn" title="Close (Esc)">&times;</span></div><div class="temporal-modal-body"><div class="temporal-grid" id="temporalGrid"></div></div><div class="temporal-modal-footer">Shortcuts: Click to zoom. Ctrl+Click/Space on button to Push. Ctrl+Shift+Click/Space on button to Submit Direct.</div></div></div>
+    
+    <div id="dresModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 class="modal-title"><i class="fas fa-trophy"></i> DRES Submission</h2>
+                <span class="modal-close" id="dresModalCloseBtn">&times;</span>
+            </div>
+            <div class="modal-body" style="flex-direction: column; gap: 20px;">
+                <div id="dresInitialView">
+                    <button id="dresShowLoginBtn" class="search-btn" style="width: 100%;">Login to DRES</button>
+                </div>
+                <div id="dresLoginView" style="display: none; flex-direction: column; gap: 20px;">
+                    <div>
+                        <label for="dresUsername">Username</label>
+                        <input type="text" id="dresUsername" class="filter-input" placeholder="Enter your username...">
+                    </div>
+                    <div>
+                        <label for="dresPassword">Password</label>
+                        <input type="password" id="dresPassword" class="filter-input" placeholder="Enter your password...">
+                    </div>
+                    <button id="dresLoginBtn" class="search-btn" style="width: 100%;">Login & Get Evaluations</button>
+                </div>
+                <div id="dresEvaluationView" style="display: none; width: 100%;">
+                    <label for="dresEvaluationSelect">Select Evaluation</label>
+                    <select id="dresEvaluationSelect" class="filter-input" disabled></select>
+                </div>
+                <div id="dresStatus" class="dres-status">Status: Not logged in.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="videoPreviewModal" class="image-modal-overlay">
+        <span class="image-modal-close" id="closeVideoModalBtn" title="Close (Esc)">&times;</span>
+        <div class="video-player-container">
+            <video id="videoPlayer" class="image-modal-content" controls autoplay style="background-color: #000;"></video>
+            <div id="videoTimelineContainer" class="timeline-container">
+                <div class="playhead"></div>
+                <div id="videoThumbnailsStrip" class="thumbnails-strip"></div>
+            </div>
+            <div id="videoActionButtons" style="margin-top: 20px; display: flex; gap: 15px;">
+                <button id="pushCurrentFrameBtn" class="toolbar-btn" title="Push to Team (Ctrl+Space in player)">
+                    <div class="btn-hover-bg"></div>
+                    <span><i class="fas fa-users"></i> Team</span>
+                </button>
+                <button id="pushToTrakeBtn" class="toolbar-btn" title="Push to Trake Panel">
+                    <div class="btn-hover-bg"></div>
+                    <span><i class="fas fa-stream"></i> Trake</span>
+                </button>
+                <button id="submitCurrentFrameBtn" class="search-btn" title="Submit to DRES (Ctrl+Shift+Space in player)">
+                    <i class="fas fa-paper-plane"></i> Submit
+                </button>
+            </div>
+        </div>
+    </div>
+    
+     <div id="nearbyFramesSidebar" class="nearby-frames-sidebar" style="display: none;">
+        <div class="sidebar-overlay"></div>
+        <div class="sidebar-content">
+            <div class="sidebar-header">
+                <h3 id="sidebarTitle">Nearby Frames</h3>
+                <span id="sidebarCloseBtn" class="modal-close">&times;</span>
+            </div>
+            <div id="sidebarGrid" class="sidebar-grid"></div>
+        </div>
+    </div>
+
+    <script src="./script.js"></script>
+
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 class="modal-title"><i class="fas fa-history"></i> Search History</h2>
+                <span class="modal-close" id="historyModalCloseBtn">&times;</span>
+            </div>
+            <div class="modal-body" style="flex-direction: column; gap: 15px;">
+                <div id="historyListContainer" class="history-list-container">
+                </div>
+                <button id="clearHistoryBtn" class="toolbar-btn" style="align-self: flex-end; background: rgba(239, 68, 68, 0.2); border-color: #ef4444;" title="Clear All History">
+                    <div class="btn-hover-bg"></div>
+                    <span><i class="fas fa-trash"></i> Clear All</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
