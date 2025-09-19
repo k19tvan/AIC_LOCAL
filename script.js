@@ -1209,6 +1209,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const temporalShotItem = createContextItem({
                     url: `/webp_keyframes/${frameName}`, // Tạo URL đúng
                     frame_name: frameName, // Giữ lại frame_name
+                    filepath: frameName, // << --- THÊM DÒNG NÀY VÀO ---
                     video_id: e.video_id,
                     shot_id: e.shot_id,
                     frame_id: frame_id_match ? parseInt(frame_id_match[1], 10) : null
