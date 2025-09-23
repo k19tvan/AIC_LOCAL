@@ -1216,7 +1216,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 'context');
 
                 if(temporalShotItem) {
-                    // ... (phần còn lại của logic thêm label và append vào grid không đổi)
                     temporalShotItem.classList.add('temporal-grid-item');
                     const label = document.createElement('div');
                     label.className = 'temporal-item-label';

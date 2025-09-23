@@ -91,7 +91,7 @@ app = FastAPI(default_response_class=ORJSONResponse)
 origins = ["http://localhost:2108"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:2108"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -294,7 +294,8 @@ class UnifiedSearchRequest(BaseModel):
     page_size: int = 30
     is_only_meta_mode: bool = False
 
-class CheckFramesRequest(BaseModel): base_filepath: str
+class CheckFramesRequest(BaseModel):
+    base_frame_name: str # ĐỔI TÊN TỪ base_filepath
 class DRESLoginRequest(BaseModel): username: str; password: str
 class DRESSubmitRequest(BaseModel):
     sessionId: str
@@ -713,7 +714,8 @@ def search_milvus_sync(collection: Collection, collection_name: str, query_vecto
                 frame_name = frame_name + ".webp"
                 
                 final_results.append({
-                    "frame_name": frame_name, 
+                    "frame_name": frame_name,
+                    "filepath": frame_name,  # <-- THÊM DÒNG NÀY
                     "score": hit.distance,
                     "video_id": entity.get("video_id"),
                     "frame_id": entity.get("frame_id"),
@@ -1189,7 +1191,7 @@ async def search_unified(request: Request, search_data: str = Form(...), query_i
             es_tasks.append(search_asr_on_elasticsearch_async(search_data_model.asr_query, limit=500))
         
         es_results_lists = await asyncio.gather(*es_tasks)
-        es_res_map = {res['filepath']: res for res_list in es_results_lists for res in res_list}
+        es_res_map = {res['frame_name']: res for res_list in es_results_lists for res in res_list}
         es_results_for_standalone_search = list(es_res_map.values())
         timings["ocr_asr_filtering_s"] = time.time() - start_es
 
@@ -1197,7 +1199,7 @@ async def search_unified(request: Request, search_data: str = Form(...), query_i
             # If filtering returns nothing, the intersection is empty. Return early.
             return ORJSONResponse(content={"results": [], "processed_query": processed_query_for_ui, "total_results": 0, "timing_info": timings})
 
-        candidate_frame_names = [os.path.splitext(os.path.basename(res['filepath']))[0] for res in es_results_for_standalone_search]
+        candidate_frame_names = [os.path.splitext(res['frame_name'])[0] for res in es_results_for_standalone_search]
         
         if candidate_frame_names:
             batch_size = 400
@@ -1533,12 +1535,20 @@ async def temporal_search(request_data: TemporalSearchRequest, request: Request)
     
     valid_stage_results = [res for res in all_stage_candidates if isinstance(res, list)]
     if len(valid_stage_results) < len(stages):
-        response = []
-        content = json.loads(response.body)
-        content.update({"processed_queries": processed_queries_for_ui, "total_results": 0, "timing_info": {**timings, "total_request_s": time.time() - start_total_time}})
+        # ---- SỬA LỖI Ở ĐÂY ----
+        # Nếu một stage thất bại, trả về kết quả rỗng ngay lập tức.
+        # Tạo trực tiếp dictionary content thay vì dùng response.body
+        content = {
+            "results": [],
+            "processed_queries": processed_queries_for_ui,
+            "total_results": 0,
+            "is_temporal_search": not ambiguous,
+            "is_ambiguous_search": ambiguous,
+            "timing_info": {**timings, "total_request_s": time.time() - start_total_time}
+        }
         return ORJSONResponse(content=content)
         
-    clustered_results_by_stage = [process_and_cluster_results_optimized(list({item['frame_name']: item for item in res}.values())) for res in valid_stage_results]    
+    clustered_results_by_stage = [process_and_cluster_results_optimized(list({item['frame_name']: item for item in res}.values())) for res in valid_stage_results]
     start_assembly = time.time()
     for stage_clusters in clustered_results_by_stage:
         for cluster in stage_clusters:
@@ -1578,9 +1588,16 @@ async def temporal_search(request_data: TemporalSearchRequest, request: Request)
     timings["sequence_assembly_s"] = time.time() - start_assembly
     
     if not all_valid_sequences:
-        response = []
-        content = json.loads(response.body)
-        content.update({"processed_queries": processed_queries_for_ui, "total_results": 0, "timing_info": {**timings, "total_request_s": time.time() - start_total_time}})
+        # ---- SỬA LỖI Ở ĐÂY ----
+        # Nếu không tìm thấy chuỗi nào hợp lệ, trả về kết quả rỗng.
+        content = {
+            "results": [],
+            "processed_queries": processed_queries_for_ui,
+            "total_results": 0,
+            "is_temporal_search": not ambiguous,
+            "is_ambiguous_search": ambiguous,
+            "timing_info": {**timings, "total_request_s": time.time() - start_total_time}
+        }
         return ORJSONResponse(content=content)
 
     start_final_proc, TEMPORAL_PENALTY_WEIGHT = time.time(), 0.05
@@ -1660,12 +1677,18 @@ async def get_frame_at_timestamp(video_id: str = Form(...), timestamp: float = F
 
 @app.post("/check_temporal_frames")
 async def check_temporal_frames(request_data: CheckFramesRequest) -> List[str]:
-    base_filepath = request_data.base_filepath
-    if not FRAME_CONTEXT_CACHE: return [base_filepath]
-    key_filename = os.path.basename(base_filepath)
+    # Dùng trực tiếp frame_name từ request làm key
+    key_filename = request_data.base_frame_name
+
+    # Nếu cache không tồn tại hoặc không tìm thấy key,
+    # chỉ trả về một danh sách chứa chính frame_name gốc.
+    if not FRAME_CONTEXT_CACHE or key_filename not in FRAME_CONTEXT_CACHE:
+        return [key_filename]
+
+    # Nếu tìm thấy, trả về danh sách các frame_name "hàng xóm" từ cache.
+    # KHÔNG cần trả về đường dẫn đầy đủ nữa.
     neighbor_filenames = FRAME_CONTEXT_CACHE.get(key_filename)
-    if not neighbor_filenames: return [base_filepath]
-    return [os.path.join(CONTEXT_IMAGE_BASE_PATH, fname) for fname in neighbor_filenames]
+    return neighbor_filenames
 
 @app.get("/videos/{video_id}")
 async def get_video(video_id: str, range: str = Header(None)):
