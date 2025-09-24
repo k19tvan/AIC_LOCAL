@@ -638,7 +638,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const shot = data.shot ? data.shot : data;
         const user = data.user ? data.user : null;
-        if (!shot || !shot.frame_name) return null;
+        if (!shot || (!shot.frame_name && !shot.url)) {
+            console.error("Invalid shot data for createResultItem:", shot);
+            return null;
+        }
 
         const item = document.createElement('div');
         item.className = 'result-item';
@@ -649,7 +652,8 @@ document.addEventListener('DOMContentLoaded', () => {
         item.dataset.shotId = shot.shot_id;
         item.dataset.frameId = shot.frame_id;
 
-        const imageUrl = `./webp_keyframes/${shot.frame_name}`;
+        const imageUrl = shot.url || `./webp_keyframes/${shot.frame_name}`;
+
         const isLazy = source === 'main';
         const srcAttribute = isLazy ? `data-src="${imageUrl}"` : `src="${imageUrl}"`;
         const imgClass = isLazy ? 'lazy-load' : 'loaded';
@@ -1093,38 +1097,66 @@ document.addEventListener('DOMContentLoaded', () => {
             event.preventDefault();
             event.stopPropagation();
 
-            // ---- SỬA ĐỔI BẮT ĐẦU TỪ ĐÂY ----
-            if (event.ctrlKey && event.shiftKey) {
-                // Kiểm tra xem shotData có frame_name không, vì đây là thông tin cốt lõi
-                if (shotData && shotData.frame_name) {
-                    // Tạo một đối tượng mới với các trường 'url' và 'filepath' mà
-                    // hàm performImageSearchFromClick yêu cầu.
-                    const searchShotData = {
-                        ...shotData, // Sao chép tất cả thuộc tính cũ (video_id, frame_id, ...)
-                        url: `webp_keyframes/${shotData.frame_name}`, // Tạo url tương đối
-                        filepath: shotData.frame_name // Dùng frame_name làm filepath
-                    };
-                    performImageSearchFromClick(searchShotData);
-                } else {
-                    // Nếu không có frame_name, thông báo lỗi rõ ràng hơn
-                    alert("Lỗi: Dữ liệu ảnh không đầy đủ để thực hiện tìm kiếm (thiếu frame_name).");
-                }
-            } 
-            // ---- KẾT THÚC SỬA ĐỔI ----
-            
-            else if (event.type === 'contextmenu') { openVideoPreview(shotData); } 
-            else if (event.ctrlKey || event.metaKey) { openTemporalContextView(shotData); }
-            else {
-                const frameName = shotData.frame_name;
+            // --- START: CORRECTED LOGIC ---
 
-                if (!frameName) {
-                    alert("Lỗi: Không tìm thấy tên file ảnh.");
-                    return;
+            // Similarity Search (Ctrl+Shift+Click)
+            if (event.ctrlKey && event.shiftKey) {
+                let searchData = null;
+
+                // Case 1: The shot data ALREADY has a full URL (like dynamic frames or external images).
+                if (shotData.url) {
+                    searchData = shotData; // The data is complete as is.
                 }
-                const imageUrl = `/webp_keyframes/${frameName}`;
-                imageModal.style.display = "flex";
-                zoomedImage.src = imageUrl;
+                // Case 2: The shot is a static keyframe and only has a frame_name.
+                else if (shotData.frame_name) {
+                    // We must construct the necessary data for the search function.
+                    searchData = {
+                        ...shotData,
+                        url: `webp_keyframes/${shotData.frame_name}`,
+                        filepath: shotData.frame_name
+                    };
+                }
+
+                // If we successfully prepared the data, perform the search.
+                if (searchData) {
+                    performImageSearchFromClick(searchData);
+                } else {
+                    alert("Error: Image data is incomplete and a similarity search cannot be performed.");
+                }
             }
+            
+            // Video Preview (Right-Click)
+            else if (event.type === 'contextmenu') { 
+                openVideoPreview(shotData); 
+            }
+            
+            // Temporal Context (Ctrl+Click)
+            else if (event.ctrlKey || event.metaKey) { 
+                openTemporalContextView(shotData); 
+            }
+
+            // Default Action: Zoom Image (Left-Click)
+            else {
+                let imageUrl = null;
+
+                // Case 1: Use the direct URL if it exists (for dynamic frames).
+                if (shotData.url) {
+                    imageUrl = shotData.url;
+                }
+                // Case 2: Construct the URL from frame_name if no direct URL is present.
+                else if (shotData.frame_name) {
+                    imageUrl = `/webp_keyframes/${shotData.frame_name}`;
+                }
+
+                // If we have a valid URL, show the image modal.
+                if (imageUrl) {
+                    imageModal.style.display = "flex";
+                    zoomedImage.src = imageUrl;
+                } else {
+                    alert("Error: Could not find the image file to display.");
+                }
+            }
+            // --- END: CORRECTED LOGIC ---
         }
     let fpsCache = new Map(); 
 
