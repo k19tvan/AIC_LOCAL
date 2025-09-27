@@ -35,7 +35,7 @@ from urllib.parse import quote
 
 import cv2
 try:
-    import av
+    import av 
     PYAV_AVAILABLE = True
     print("--- pyav library successfully imported. AV1 support enabled. ---")
 except ImportError:
@@ -171,7 +171,7 @@ IMAGE_BASE_PATH = "/workspace/mlcv2/WorkingSpace/Personal/nguyenmv/HCMAIC2025/AI
 
 BEIT3_WORKER_URL = "http://model-workers2:8001/embed"
 BGE_WORKER_URL = "http://model-workers:8002/embed"
-OPS_MM_WORKER_URL = "http://model-workers:8004/embed"
+PE_WORKER_URL = "http://localhost:8021/embed"
 IMAGE_GEN_WORKER_URL = "http://localhost:8004/generate"
 BGE_M3_WORKER_URL = "http://model-workers:8003/embed"
 METACLIP2_WORKER_URL = "http://model-workers:8006/embed" 
@@ -185,10 +185,10 @@ MILVUS_PORT = "19530"
 BEIT3_COLLECTION_NAME = "beit3_batch1_2_filter"
 BGE_COLLECTION_NAME = "bge_batch1_2_filter"
 BGE_M3_CAPTION_COLLECTION_NAME = "BGE_M3_HCMAIC_captions_batch_1"
-OPS_MM_COLLECTION_NAME = "MM_EMBED_MAX_RESOLUTION"
+PE_COLLECTION_NAME = "Perception"    
 METACLIP2_COLLECTION_NAME = "metaclip2_from_npz"
 
-MODEL_WEIGHTS = {"ops_mm": 0.40, "beit3": 0.25, "metaclip2": 0.20, "bge": 0.15, "bge_caption": 0.0}
+MODEL_WEIGHTS = {"pe_model": 0.25, "beit3": 0.25, "metaclip2": 0.20, "bge": 0.15, "bge_caption": 0.0}
 SEARCH_DEPTH = 500
 TOP_K_RESULTS = 1000
 MAX_SEQUENCES_TO_RETURN = 500
@@ -207,7 +207,7 @@ COLLECTION_TO_INDEX_TYPE = {
     BEIT3_COLLECTION_NAME: "HNSW",
     BGE_COLLECTION_NAME: "HNSW",
     BGE_M3_CAPTION_COLLECTION_NAME: "HNSW",
-    OPS_MM_COLLECTION_NAME: "HNSW",
+    PE_COLLECTION_NAME: "HNSW",
     METACLIP2_COLLECTION_NAME: "HNSW" 
 
 }
@@ -219,7 +219,7 @@ OBJECT_POSITIONS_DF: Optional[pl.DataFrame] = None
 beit3_collection: Optional[Collection] = None
 bge_collection: Optional[Collection] = None
 bge_m3_caption_collection: Optional[Collection] = None
-ops_mm_collection: Optional[Collection] = None
+pe_collection: Optional[Collection] = None
 metaclip2_collection: Optional[Collection] = None
 
 
@@ -264,7 +264,7 @@ class StageData(BaseModel):
 
 class TemporalSearchRequest(BaseModel):
     stages: list[StageData]
-    models: List[str] = ["beit3", "bge", "ops_mm"]
+    models: List[str] = ["beit3", "bge", "pe_model"]
     cluster: bool = False
     filters: Optional[ObjectFilters] = None
     ambiguous: bool = False
@@ -284,7 +284,7 @@ class UnifiedSearchRequest(BaseModel):
     image_search_text: Optional[str] = None
     ocr_query: Optional[str] = None
     asr_query: Optional[str] = None
-    models: List[str] = ["beit3", "bge", "ops_mm"]
+    models: List[str] = ["beit3", "bge", "pe_model"]
     filters: Optional[ObjectFilters] = None
     enhance: bool = False
     expand: bool = False
@@ -312,7 +312,7 @@ class TaskContentRequest(BaseModel):
 
 @app.on_event("startup")
 def startup_event():
-    global es, OBJECT_COUNTS_DF, OBJECT_POSITIONS_DF, beit3_collection, bge_collection, bge_m3_caption_collection, ops_mm_collection, metaclip2_collection
+    global es, OBJECT_COUNTS_DF, OBJECT_POSITIONS_DF, beit3_collection, bge_collection, bge_m3_caption_collection, pe_collection, metaclip2_collection
     try:
         print("--- Loading cache json ---")
         load_frame_context_cache_from_json()
@@ -326,7 +326,7 @@ def startup_event():
             "BEiT3": (BEIT3_COLLECTION_NAME, "beit3"),
             "BGE": (BGE_COLLECTION_NAME, "bge"),
             "BGECaption": (BGE_M3_CAPTION_COLLECTION_NAME, "bge_caption"),
-            "OpsMM": (OPS_MM_COLLECTION_NAME, "ops_mm"),
+            "Perception": (PE_COLLECTION_NAME, "pe_model"),
             "MetaCLIP2": (METACLIP2_COLLECTION_NAME, "metaclip2")
         }
 
@@ -341,8 +341,8 @@ def startup_event():
                     bge_collection = collection
                 elif var_name == "bge_caption":
                     bge_m3_caption_collection = collection
-                elif var_name == "ops_mm": 
-                    ops_mm_collection = collection
+                elif var_name == "pe_model": 
+                    pe_collection = collection 
                 elif var_name == "metaclip2":
                     metaclip2_collection = collection
                     
@@ -709,13 +709,14 @@ def search_milvus_sync(collection: Collection, collection_name: str, query_vecto
                 entity = hit.entity
                 frame_name = entity.get("frame_name")
                 if not frame_name: continue
+                # Ensure frame_name has no extension for consistency
                 if frame_name.endswith(".webp"): frame_name = frame_name[:-5]
                     
-                frame_name = frame_name + ".webp"
-                
+                filepath = os.path.join(IMAGE_BASE_PATH, f"{frame_name}.webp")
+                # --- FIX: Add frame_name (without extension) to the final dictionary ---
                 final_results.append({
-                    "frame_name": frame_name,
-                    "filepath": frame_name,  # <-- THÊM DÒNG NÀY
+                    "frame_name": f"{frame_name}.webp", # Frontend expects it with extension
+                    "filepath": filepath,
                     "score": hit.distance,
                     "video_id": entity.get("video_id"),
                     "frame_id": entity.get("frame_id"),
@@ -738,10 +739,12 @@ def search_ocr_on_elasticsearch_sync(keyword: str, limit: int = 500):
         for hit in response["hits"]["hits"]:
             source = hit['_source']
             if all(k in source for k in ['file_path', 'video_id', 'shot_id', 'frame_id']):
-                # Lấy tên file từ đường dẫn đầy đủ
-                frame_name = os.path.basename(source['file_path'])
+                # --- FIX: Add frame_name alongside filepath ---
+                filepath = source['file_path']
+                frame_name = os.path.basename(filepath)
                 results.append({
-                    "frame_name": frame_name, # <--- TRẢ VỀ 'frame_name'
+                    "frame_name": frame_name,
+                    "filepath": filepath, 
                     "score": hit['_score'], 
                     "video_id": source['video_id'], 
                     "shot_id": str(source['shot_id']), 
@@ -759,16 +762,19 @@ def search_asr_on_elasticsearch_sync(keyword: str, limit: int = 500):
         results = []
         for hit in response["hits"]["hits"]:
             source = hit['_source']
-            if all(k in source for k in ['file_path', 'video_id', 'shot_id', 'frame_id']):
-                frame_name = os.path.basename(source['file_path'])
+            filepath = source.get('file_path') or source.get('filepath')
+            if filepath and all(k in source for k in ['video_id', 'shot_id', 'frame_id']):
+                # --- FIX: Add frame_name alongside filepath ---
+                frame_name = os.path.basename(filepath)
                 results.append({
-                    "frame_name": frame_name, 
+                    "frame_name": frame_name,
+                    "filepath": filepath, 
                     "score": hit['_score'], 
                     "video_id": source['video_id'], 
                     "shot_id": str(source['shot_id']), 
                     "frame_id": source['frame_id']
                 })
-        return results  
+        return results
     except NotFoundError: return []
     except Exception as e: print(f"Lỗi Elasticsearch ASR: {e}"); return []
 
@@ -849,7 +855,7 @@ async def get_embeddings_for_query_from_worker(
     is_fusion: bool = False
 ) -> Dict[str, List[List[float]]]:
     tasks = []
-    model_url_map = {"beit3": BEIT3_WORKER_URL, "bge": BGE_WORKER_URL, "ops_mm": OPS_MM_WORKER_URL, "bge-m3": BGE_M3_WORKER_URL, "metaclip2": METACLIP2_WORKER_URL}
+    model_url_map = {"beit3": BEIT3_WORKER_URL, "bge": BGE_WORKER_URL, "pe_model": PE_WORKER_URL, "bge-m3": BGE_M3_WORKER_URL, "metaclip2": METACLIP2_WORKER_URL}
     async def get_model_embedding(model_name: str) -> tuple[str, list]:
         url = model_url_map.get(model_name)
         if not url: return model_name, []
@@ -862,6 +868,7 @@ async def get_embeddings_for_query_from_worker(
                 if image_content:
                     files = {'image_file': (query_image_info['filename'], image_content, query_image_info['content_type'])}
                 resp = await client.post(url, files=files, data=data, timeout=20.0)
+                print(1)
                 if resp.status_code == 200:
                     embeddings.extend(resp.json().get('embedding', []))
             return model_name, embeddings
@@ -1233,7 +1240,7 @@ async def search_unified(request: Request, search_data: str = Form(...), query_i
                 "beit3": (beit3_collection, BEIT3_COLLECTION_NAME),
                 "bge": (bge_collection, BGE_COLLECTION_NAME),
                 "bge_caption": (bge_m3_caption_collection, BGE_M3_CAPTION_COLLECTION_NAME),
-                "ops_mm": (ops_mm_collection, OPS_MM_COLLECTION_NAME),
+                "pe_model": (pe_collection, PE_COLLECTION_NAME),
                 "metaclip2": (metaclip2_collection, METACLIP2_COLLECTION_NAME)
             }
 
@@ -1244,7 +1251,7 @@ async def search_unified(request: Request, search_data: str = Form(...), query_i
                 if rrf_model_name in model_map:
                     collection, col_name = model_map[rrf_model_name]
                     # Add one efficient search task per model to the list
-                    milvus_tasks.append(search_milvus_async(collection, col_name, vectors, SEARCH_DEPTH, expr=milvus_expr))
+                    milvus_tasks.append(search_milvus_async(collection, col_name, vectors, SEARCH_DEPTH_PER_STAGE, expr=milvus_expr))
                     models_in_task_order.append(rrf_model_name)
 
             # Run all model searches in parallel
@@ -1336,7 +1343,8 @@ async def _perform_vector_search(
     stage: StageData, 
     requested_models: List[str],
     processed_queries_for_ui: List[str],
-    is_only_meta_mode: bool = False
+    is_only_meta_mode: bool = False,
+    milvus_expr: Optional[str] = None 
 ) -> List[Dict[str, Any]]:
     """Helper: Thực hiện toàn bộ quy trình vector search (embedding -> milvus -> rrf)."""
     results_by_model = {}
@@ -1380,7 +1388,7 @@ async def _perform_vector_search(
     models_in_task_order = []
     model_map = {
         "beit3": (beit3_collection, BEIT3_COLLECTION_NAME), "bge": (bge_collection, BGE_COLLECTION_NAME),
-        "bge_caption": (bge_m3_caption_collection, BGE_M3_CAPTION_COLLECTION_NAME), "ops_mm": (ops_mm_collection, OPS_MM_COLLECTION_NAME),
+        "bge_caption": (bge_m3_caption_collection, BGE_M3_CAPTION_COLLECTION_NAME), "pe_model": (pe_collection, PE_COLLECTION_NAME), # <-- CORRECTED ENTRY
         "metaclip2": (metaclip2_collection, METACLIP2_COLLECTION_NAME)
     }
     
@@ -1395,11 +1403,11 @@ async def _perform_vector_search(
         milvus_tasks.append(search_milvus_async(collection, col_name, results_by_model["bge"], SEARCH_DEPTH_PER_STAGE, expr=None))
         models_in_task_order.append("bge")
 
-    if "ops_mm" in requested_models and "ops_mm" in results_by_model:
-        collection, col_name = model_map["ops_mm"]
-        milvus_tasks.append(search_milvus_async(collection, col_name, results_by_model["ops_mm"], SEARCH_DEPTH_PER_STAGE, expr=None))
-        models_in_task_order.append("ops_mm")
-
+    if "pe_model" in requested_models and "pe_model" in results_by_model: # <-- CHECK FOR NEW MODEL
+        collection, col_name = model_map["pe_model"]
+        milvus_tasks.append(search_milvus_async(collection, col_name, results_by_model["pe_model"], SEARCH_DEPTH_PER_STAGE, expr=None))
+        models_in_task_order.append("pe_model")
+        
     if "metaclip2" in requested_models and "metaclip2" in results_by_model:
         collection, col_name = model_map["metaclip2"]
         milvus_tasks.append(search_milvus_async(collection, col_name, results_by_model["metaclip2"], SEARCH_DEPTH_PER_STAGE, expr=None))
@@ -1472,60 +1480,59 @@ async def temporal_search(request_data: TemporalSearchRequest, request: Request)
     # <--- START CORRECTION: BATCHING LOGIC FOR /temporal_search ENDPOINT --->
     async def get_stage_results(client: httpx.AsyncClient, stage: StageData):
         """
-        PHIÊN BẢN TÁI CẤU TRÚC:
-        Thực hiện tìm kiếm vector và ES song song, sau đó kết hợp kết quả.
+        PHIÊN BẢN SỬA LỖI:
+        Thực hiện tìm kiếm ES trước (nếu có), sau đó dùng kết quả để lọc
+        tìm kiếm vector, đảm bảo logic "filter-then-search" chính xác.
         """
         has_vector_query = bool(stage.query or stage.query_image_name or stage.generated_image_name)
         has_ocr_asr_filter = bool(stage.ocr_query or stage.asr_query)
 
-        # Nếu không có truy vấn nào, trả về rỗng
         if not has_vector_query and not has_ocr_asr_filter:
+            processed_queries_for_ui.append("Empty Stage")
             return []
 
-        # --- Giai đoạn 1: Tạo và chạy các task song song ---
-        search_tasks = []
-        vector_task = None
-        es_task = None
-        
-        if has_vector_query:
-            vector_task = asyncio.create_task(
-                _perform_vector_search(client, stage, models, processed_queries_for_ui, request_data.is_only_meta_mode)
-            )
-            search_tasks.append(vector_task)
-            
+        milvus_filter_expr = None
+        es_results_for_standalone_search = []
+
+        # --- Step 1: Chạy bộ lọc OCR/ASR TRƯỚC TIÊN (nếu có) ---
         if has_ocr_asr_filter:
-            # Giới hạn số ứng viên ES để đảm bảo hiệu suất
-            ES_CANDIDATE_LIMIT = 500 
-            es_task = asyncio.create_task(
-                _perform_es_search(stage.ocr_query, stage.asr_query, limit=ES_CANDIDATE_LIMIT)
+            es_results = await _perform_es_search(stage.ocr_query, stage.asr_query, limit=1000)
+            
+            if not es_results:
+                # Nếu bộ lọc không trả về kết quả, thì toàn bộ stage này không có kết quả.
+                processed_queries_for_ui.append(f"Filter returned no candidates for '{stage.ocr_query or stage.asr_query}'")
+                return []
+            
+            # Tạo biểu thức lọc cho Milvus từ kết quả ES
+            # Lấy tên file gốc (không có extension) để lọc trong Milvus
+            candidate_names = [os.path.splitext(os.path.basename(res['filepath']))[0] for res in es_results]
+            formatted_names = ", ".join([f'"{name}"' for name in candidate_names])
+            milvus_filter_expr = f"frame_name in [{formatted_names}]"
+            es_results_for_standalone_search = es_results
+
+        # --- Step 2: Chạy Vector Search (với bộ lọc nếu có) ---
+        if has_vector_query:
+            # Truyền biểu thức lọc đã tạo vào hàm vector search
+            vector_results = await _perform_vector_search(
+                client, 
+                stage, 
+                models, 
+                processed_queries_for_ui, 
+                request_data.is_only_meta_mode,
+                milvus_expr=milvus_filter_expr  # <-- PASSING THE FILTER
             )
-            search_tasks.append(es_task)
-            
-        await asyncio.gather(*search_tasks)
+            return vector_results # Kết quả cuối cùng là từ vector search đã được lọc
 
-        # --- Giai đoạn 2: Lấy và xử lý kết quả ---
-        vector_results = await vector_task if vector_task else []
-        es_results = await es_task if es_task else []
-
-        # --- Giai đoạn 3: Quyết định kết quả cuối cùng cho stage ---
-        
-        # Kịch bản 1: Chỉ tìm kiếm vector
-        if has_vector_query and not has_ocr_asr_filter:
-            return vector_results
-            
-        # Kịch bản 2: Chỉ tìm kiếm OCR/ASR
-        if not has_vector_query and has_ocr_asr_filter:
-            # Chuyển đổi score thành rrf_score để nhất quán
-            for res in es_results:
+        # --- Step 3: Nếu stage chỉ có bộ lọc OCR/ASR (không có vector search) ---
+        elif has_ocr_asr_filter:
+            processed_queries_for_ui.append(f"Filter-Only: '{stage.ocr_query or stage.asr_query}'")
+            # Chuẩn hóa định dạng kết quả để nhất quán
+            for res in es_results_for_standalone_search:
                 res['rrf_score'] = res.pop('score', 0.0)
-            return sorted(es_results, key=lambda x: x.get('rrf_score', 0), reverse=True)
-            
-        # Kịch bản 3: Tìm kiếm kết hợp (phần quan trọng nhất)
-        if has_vector_query and has_ocr_asr_filter:
-            return _combine_and_rerank_results(vector_results, es_results)
-            
-        return [] # Trường hợp dự phòng
-    # <--- END CORRECTION --->
+            return sorted(es_results_for_standalone_search, key=lambda x: x.get('rrf_score', 0), reverse=True)
+        
+        # Trường hợp dự phòng, không nên xảy ra
+        return []
 
     start_stages = time.time()
     async with httpx.AsyncClient(timeout=120.0) as client:

@@ -659,7 +659,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const imgClass = isLazy ? 'lazy-load' : 'loaded';
 
         let title = '';
-        let itemHTML = `<img class="${imgClass}" ${srcAttribute} alt="Frame" loading="lazy" decoding="async" />`;
+        // --- MODIFY THIS LINE ---
+        let itemHTML = `<img class="${imgClass}" ${srcAttribute} alt="Frame" loading="lazy" decoding="async" />
+                        ${shot.is_single_instance ? '<div class="single-instance-indicator">1</div>' : ''}`;
+        // --- END OF MODIFICATION ---
         let actionsHTML = '';
 
         if (isTeamworkItem) {

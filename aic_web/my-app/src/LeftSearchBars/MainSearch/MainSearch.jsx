@@ -19,17 +19,33 @@ const MainSearch = () => {
 
   const handleSearch = async () => {
     console.log("handleSearch called");
+
     const payload = {
       query: value,
-      filters: {
-        ocr: { enabled: ocrEnabled, text: ocrValue },
-        asr: { enabled: asrEnabled, text: asrValue }
-      }
+      filters: {}
     };
+
+    if (ocrEnabled) {
+      payload.filters.ocr = { enabled: true, text: ocrValue };
+    }
+    else {
+      payload.filters.ocr = { enabled: false, text: "" };
+    }
+
+    if (asrEnabled) {
+      payload.filters.asr = { enabled: true, text: asrValue };
+    }
+    else{
+      payload.filters.asr = { enabled: false, text: "" };
+    }
+
+    if (payload.filters.asr.text == "") payload.filters.asr.enabled = false;
+    if (payload.filters.ocr.text == "") payload.filters.ocr.enabled = false;
+
     console.log("Sending payload:", payload);
 
     try {
-      const response = await fetch("http://localhost:18028/api/search", {
+      const response = await fetch("http://localhost:18028/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

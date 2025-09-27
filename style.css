@@ -1461,3 +1461,37 @@ body.video-modal-active.theme-akira-red {
 .submission-overlay.status-correct { background: rgba(74, 222, 128, 0.7); color: white; }
 .submission-overlay.status-wrong { background: rgba(244, 63, 94, 0.7); color: white; }
 .submission-overlay.status-duplicate { background: rgba(245, 158, 11, 0.7); color: white; }
+
+/* In style.css, add this at the end of the file */
+
+/* Ensure the parent container can position the indicator correctly */
+.result-item {
+    position: relative;
+}
+
+/* Styles for the "1" indicator */
+.single-instance-indicator {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 3; /* Make sure it's above the image */
+    
+    background: linear-gradient(135deg, #f5576c 0%, #f43f5e 100%);
+    color: white;
+    font-weight: 700;
+    font-size: 0.8rem;
+    
+    width: 22px;
+    height: 22px;
+    border-radius: 50%; /* Make it a circle */
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    
+    /* Prevents user from selecting the text "1" */
+    user-select: none; 
+}
