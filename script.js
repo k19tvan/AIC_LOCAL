@@ -521,7 +521,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(err.detail || 'Failed to download image');
             }
             const imageData = await downloadResponse.json();
-            
+            const absoluteImageUrl = BACKEND_URL + imageData.url; // Create absolute URL
+
+
             if (action === 'search') {
                 addStageToStart();
                 const newStage = stagesContainer.querySelector('.stage-card');
@@ -532,7 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const removeImageBtn = newStage.querySelector('.remove-image-btn');
                     
                     newStage.tempImageName = imageData.temp_image_name;
-                    previewImage.src = imageData.url;
+                    previewImage.src = absoluteImageUrl;
                     previewImage.style.display = 'block';
                     uploadInstructions.style.display = 'none';
                     removeImageBtn.style.display = 'flex';
@@ -541,7 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (action === 'push') {
                 const shotData = {
                     filepath: imageData.filepath,
-                    url: imageData.url,
+                    url: absoluteImageUrl,
                     video_id: 'N/A',
                     shot_id: 'N/A',
                     frame_id: 'N/A'
@@ -1384,7 +1386,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(err.detail || 'Failed to prepare external image');
                 }
                 const imageData = await downloadResponse.json();
-                const localImageResponse = await fetch(`http://localhost:18028/${imageData.url}`);
+                const absoluteImageUrl = BACKEND_URL + imageData.url; // <-- FIX: Create a clean, absolute URL
+
+                const localImageResponse = await fetch(absoluteImageUrl);
                 if (!localImageResponse.ok) {
                     throw new Error(`Không thể tải ảnh đã xử lý: ${localImageResponse.statusText}`);
                 }
