@@ -1092,6 +1092,46 @@ input:checked + .slider:before { transform: translateX(22px); }
     border-radius: 50%;
     border: 2px solid var(--border-color);
 }
+
+#stsPanelContainer {
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0; /* This will be adjusted by JS if other panels are open */
+    background: rgba(10, 14, 26, 0.9);
+    z-index: 48; /* Slightly lower than Trake and Teamwork */
+}
+
+#stsPanelContainer h3 {
+    font-size: 1.3rem;
+    color: #f59e0b; /* A distinct orange/amber color */
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 24px 24px 0 24px;
+}
+
+#stsGrid {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 16px;
+    padding: 16px 24px 24px 24px;
+    min-height: 150px;
+}
+
+/* Style for items within the new grid */
+#stsGrid .result-item {
+    flex: 0 0 220px;
+    border: 2px solid #f59e0b; /* Match the header color */
+    cursor: default; /* Not draggable */
+}
+
+/* We'll reuse trake-item-actions for the remove button */
+#stsGrid .result-item:hover .trake-action-btn {
+    display: flex;
+}
+
 #trakePanelContainer {
     border-bottom: 1px solid var(--border-color);
     position: sticky;

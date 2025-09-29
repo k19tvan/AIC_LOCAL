@@ -26,6 +26,7 @@ let targetFrameTime = 0;
 let isScrubbing = false;
 let scrubbingTimeout = null;
 let scrubAnimationId = null;
+let specifiedSearchVideos = new Map()
 
 const PAGE_SIZE = 30;
 
@@ -138,6 +139,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const MAX_HISTORY_ITEMS = 30; // Giới hạn số lượng mục lịch sử
     // *** END: HISTORY ELEMENTS ***
 
+    // Specified Temporal Search Elements
+    const stsBtn = document.getElementById('stsBtn');
+    const stsPanelContainer = document.getElementById('stsPanelContainer');
+    const stsGrid = document.getElementById('stsGrid');
 
     function scrubUpdateLoop() {
         if (!isScrubbing) {
@@ -707,7 +712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (submitBtn) submitBtn.addEventListener("click", e => handleFrameInteraction(e, shot, source));
         
         const pushToTrakeBtn = item.querySelector(".trake-push-btn");
-        if(pushToTrakeBtn) pushToTrakeBtn.addEventListener("click", e => { e.stopPropagation(); pushToTrakePanel(shot); });
+        if(pushToTrakeBtn) pushToTrakeBtn.addEventListener("click", e => { e.stopPropagation(); pushToTrakePanel(shot); updateStickyPanelPositions()});
 
         const removeTrakeBtn = item.querySelector(".remove-trake-btn");
         if(removeTrakeBtn) removeTrakeBtn.addEventListener("click", e => {
@@ -763,6 +768,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('WebSocket connection established.');
             teamworkPanelContainer.style.display = 'block';
             reconnectDelay = 1000;
+            updateStickyPanelPositions();
         };
 
         ws.onmessage = (event) => {
@@ -1638,6 +1644,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // START: ADD is_only_meta_mode HERE
                 const payload = { stages: stagesData, models: Array.from(document.querySelectorAll('#modelDropdown input:checked')).map(cb => cb.value), filters: objectFilters, ambiguous: ambiguousBtn.classList.contains('active'), page: 1, page_size: PAGE_SIZE, is_only_meta_mode: onlyMetaBtn.classList.contains('active') };
                 // END: ADD is_only_meta_mode HERE
+                if (stsBtn.classList.contains('active') && specifiedSearchVideos.size > 0) {
+                    payload.specified_videos = Array.from(specifiedSearchVideos.keys());
+                }
                 lastSearchPayload = payload;
                 requestBody = JSON.stringify(payload);
             }
@@ -1946,7 +1955,72 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===============================================
     // END: SEARCH HISTORY FUNCTIONS
     // ===============================================
+    function renderStsPanel() {
+        stsGrid.innerHTML = ''; // Clear current content
+        if (specifiedSearchVideos.size === 0) {
+            // Optionally hide the panel if it becomes empty
+            stsBtn.classList.remove('active');
+            stsPanelContainer.style.display = 'none';
+            return;
+        }
 
+        for (const [videoId, shotData] of specifiedSearchVideos.entries()) {
+            const item = createResultItem(shotData, 'sts'); // Use a unique source type
+            if (item) {
+                // Modify the created item for the STS panel
+                item.dataset.videoId = videoId; // Ensure videoId is set
+                item.style.cursor = 'default';
+                
+                // Add a remove button
+                const actions = document.createElement('div');
+                actions.className = 'trake-item-actions';
+                actions.innerHTML = `<button class="trake-action-btn remove-sts-btn" title="Remove Video from Search"><i class="fas fa-times"></i></button>`;
+                item.appendChild(actions);
+
+                stsGrid.appendChild(item);
+            }
+        }
+    }
+
+    stsBtn.addEventListener('click', () => {
+        const isActive = stsBtn.classList.toggle('active');
+        stsPanelContainer.style.display = isActive ? 'block' : 'none';
+        
+        // This is important: make sure panels stack correctly when opened/closed.
+        // We can create a helper function to manage the `top` style property.
+        updateStickyPanelPositions(); 
+    });
+
+    function updateStickyPanelPositions() {
+        let topOffset = 0;
+        const teamworkPanel = document.getElementById('teamworkPanelContainer');
+        const stsPanel = document.getElementById('stsPanelContainer');
+        const trakePanel = document.getElementById('trakePanelContainer');
+
+        if (teamworkPanel.style.display !== 'none') {
+            teamworkPanel.style.top = `${topOffset}px`;
+            topOffset += teamworkPanel.offsetHeight;
+        }
+        if (stsPanel.style.display !== 'none') {
+            stsPanel.style.top = `${topOffset}px`;
+            topOffset += stsPanel.offsetHeight;
+        }
+        if (trakePanel.style.display !== 'none') {
+            trakePanel.style.top = `${topOffset}px`;
+        }
+    }
+    stsGrid.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.remove-sts-btn');
+        if (removeBtn) {
+            const item = removeBtn.closest('.result-item');
+            const videoId = item?.dataset.videoId;
+            if (videoId && specifiedSearchVideos.has(videoId)) {
+                specifiedSearchVideos.delete(videoId);
+                renderStsPanel();
+                showToast(`Video ${videoId} removed from specified search.`, 2000, 'info');
+            }
+        }
+    });
 
     setupImageObserver();
     setupUser();
@@ -2212,6 +2286,11 @@ document.addEventListener('DOMContentLoaded', () => {
             googleSearchInput.value = '';
             googleResultsContainer.innerHTML = '';
             googleResultsWrapper.style.display = 'none';
+
+            // --- START: ADDED LINES FOR STS PANEL RESET ---
+            specifiedSearchVideos.clear();
+            renderStsPanel(); // This will automatically hide the panel and deactivate the button
+            // --- END: ADDED LINES FOR STS PANEL RESET ---
         }
     });            
     clusterBtn.addEventListener('click', () => {
@@ -2412,6 +2491,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 event.preventDefault(); modelSelectBtn.click(); return;
             }
         }
+
+        if (event.code === 'Space' && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+            if (!isModalVisible && currentlyHoveredItemData && currentlyHoveredItemElement) {
+                event.preventDefault();
+                const itemData = currentlyHoveredItemData;
+                const videoId = itemData.video_id;
+
+                if (!videoId || videoId === 'N/A') {
+                    showToast("This item does not belong to a specific video.", 2000, 'warning');
+                    return;
+                }
+
+                if (specifiedSearchVideos.has(videoId)) {
+                    // Video is already selected, so remove it
+                    specifiedSearchVideos.delete(videoId);
+                    showToast(`Video ${videoId} REMOVED from specified search.`, 2500, 'error');
+                } else {
+                    // Video is not selected, so add it
+                    specifiedSearchVideos.set(videoId, itemData);
+                    showToast(`Video ${videoId} ADDED to specified search.`, 2500, 'success');
+                    // Automatically open the panel for the user
+                    if (!stsBtn.classList.contains('active')) {
+                        stsBtn.click();
+                    }
+                }
+                // Update the UI panel
+                renderStsPanel();
+            }
+            return; // Prevent other spacebar actions
+        }
+
 
         if (event.code === 'Space' && (event.ctrlKey || event.metaKey)) {
             if (!isModalVisible && currentlyHoveredItemData && currentlyHoveredItemElement) {
